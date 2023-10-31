@@ -19,6 +19,10 @@ import org.slf4j.bridge.SLF4JBridgeHandler;
 public class Main {
     private final static Logger logger = LoggerFactory.getLogger(Main.class);
 
+    private final static int MAX_RETRY_COUNT = 3;
+    private final static String YDB_RETRYABLE = "tech.ydb.jdbc.exception.YdbRetryableException";
+    private final static String YDB_IDEMPOTENT_RETRYABLE = "tech.ydb.jdbc.exception.YdbConditionallyRetryableException";
+
     public static void main(String[] args) {
         // Enable redirect Java Util Logging to SLF4J
         LogManager.getLogManager().reset();
@@ -34,31 +38,65 @@ public class Main {
 
         try (Connection connection = DriverManager.getConnection(connectionUrl)) {
             try {
-                dropTable(connection);
+                execute(() -> dropTable(connection));
             } catch (SQLException ex) {
                 logger.warn("Can't drop table with message {}", ex.getMessage());
             }
 
-            createTable(connection);
+            execute(() -> createTable(connection));
 
-            simpleInsert(connection);
-            select(connection);
-            assertRowsCount(2, selectCount(connection));
+            execute(() -> simpleInsert(connection));
 
-            batchInsert(connection);
-            select(connection);
-            assertRowsCount(4, selectCount(connection));
+            executeIdempotent(() -> select(connection));
+            executeIdempotent(() -> assertRowsCount(2, selectCount(connection)));
 
-            updateInTransaction(connection);
-            select(connection);
-            assertRowsCount(4, selectCount(connection));
+            execute(() -> batchInsert(connection));
+            executeIdempotent(() -> select(connection));
+            executeIdempotent(() -> assertRowsCount(4, selectCount(connection)));
 
-            deleteEmpty(connection);
-            select(connection);
-            assertRowsCount(2, selectCount(connection));
+            execute(() -> updateInTransaction(connection));
+            executeIdempotent(() -> select(connection));
+            executeIdempotent(() -> assertRowsCount(4, selectCount(connection)));
+
+            executeIdempotent(() -> deleteEmpty(connection));
+            executeIdempotent(() -> select(connection));
+            executeIdempotent(() -> assertRowsCount(2, selectCount(connection)));
 
         } catch (SQLException e) {
             logger.error("JDBC Example problem", e);
+        }
+    }
+
+    interface SqlRunnable {
+        void execute() throws SQLException;
+    }
+
+    private static void execute(SqlRunnable runnable) throws SQLException {
+        runWithRetries(runnable, false);
+    }
+
+    private static void executeIdempotent(SqlRunnable runnable) throws SQLException {
+        runWithRetries(runnable, true);
+    }
+
+    private static void runWithRetries(SqlRunnable runnable, boolean idempotent) throws SQLException {
+        int retryCount = 0;
+        while (true) {
+            try {
+                runnable.execute();
+                return;
+            } catch (SQLException ex) {
+                String className = ex.getClass().getName();
+                boolean retryable = YDB_RETRYABLE.equals(className)
+                        || (idempotent && YDB_IDEMPOTENT_RETRYABLE.equals(className));
+
+                retryCount += 1;
+                if (!retryable || retryCount > MAX_RETRY_COUNT) {
+                    throw ex;
+                }
+
+                logger.warn("failed with error {}, retry {}...", ex.getMessage(), retryCount);
+            }
         }
     }
 
