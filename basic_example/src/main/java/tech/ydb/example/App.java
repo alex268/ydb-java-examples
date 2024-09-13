@@ -1,6 +1,7 @@
 package tech.ydb.example;
 
 import java.io.IOException;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.Arrays;
@@ -16,6 +17,7 @@ import tech.ydb.common.transaction.TxMode;
 import tech.ydb.core.Status;
 import tech.ydb.core.grpc.GrpcReadStream;
 import tech.ydb.core.grpc.GrpcTransport;
+import tech.ydb.query.QueryClient;
 import tech.ydb.table.SessionRetryContext;
 import tech.ydb.table.TableClient;
 import tech.ydb.table.description.TableColumn;
@@ -45,8 +47,9 @@ public final class App implements Runnable, AutoCloseable {
     App(String connectionString) {
         this.transport = GrpcTransport.forConnectionString(connectionString)
                 .withAuthProvider(CloudAuthHelper.getAuthProviderFromEnviron())
+                .withConnectTimeout(Duration.ofHours(1))
                 .build();
-        this.tableClient = TableClient.newClient(transport).build();
+        this.tableClient = QueryClient.newTableClient(transport).build();
 
         this.database = transport.getDatabase();
         this.retryCtx = SessionRetryContext.create(tableClient).build();
