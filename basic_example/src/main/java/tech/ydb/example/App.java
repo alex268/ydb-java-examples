@@ -58,17 +58,17 @@ public final class App implements Runnable, AutoCloseable {
     @Override
     public void run() {
         createTables();
-        describeTables();
-        upsertTablesData();
-
-        upsertSimple();
-
-        selectSimple();
-        selectWithParams(1, 2);
-        scanQueryWithParams(2, 1);
+//        describeTables();
+//        upsertTablesData();
+//
+//        upsertSimple();
+//
+//        selectSimple();
+//        selectWithParams(1, 2);
+//        scanQueryWithParams(2, 1);
 
         multiStepTransaction(2, 5);
-        tclTransaction();
+//        tclTransaction();
 
         dropTables();
     }
