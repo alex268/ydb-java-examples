@@ -5,25 +5,16 @@
         <artifactId>ydb-jdbc-examples</artifactId>
         <version>1.1.0-SNAPSHOT</version>
     </parent>
-    <dependencyManagement>
-        <dependencies>
-            <dependency>
-                <groupId>org.springframework.boot</groupId>
-                <artifactId>spring-boot-dependencies</artifactId>
-                <version>3.2.1</version>
-                <scope>import</scope>
-                <type>pom</type>
-            </dependency>
-        </dependencies>
-    </dependencyManagement>
+
     <artifactId>spring-data-jdbc</artifactId>
     <name>Spring Data JDBC Example</name>
     <description>Basic example for Spring Boot JDBC</description>
+
     <properties>
         <maven.compiler.release>17</maven.compiler.release>
         <kotlin.version>1.9.22</kotlin.version>
-        <spring.data.jdbc.ydb.version>1.0.0</spring.data.jdbc.ydb.version>
-        <spring.boot.version>3.2.1</spring.boot.version>
+        <spring.data.jdbc.ydb.version>1.1.0</spring.data.jdbc.ydb.version>
+        <spring.boot.version>3.5.7</spring.boot.version>
         <flyway.version>10.7.1</flyway.version>
     </properties>
     <dependencies>
@@ -38,12 +29,11 @@
         <dependency>
             <groupId>org.flywaydb</groupId>
             <artifactId>flyway-core</artifactId>
-            <version>${flyway.version}</version>
         </dependency>
         <dependency>
             <groupId>tech.ydb.dialects</groupId>
             <artifactId>flyway-ydb-dialect</artifactId>
-            <version>1.0.0-RC0</version>
+            <version>1.0.0</version>
         </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
@@ -52,12 +42,10 @@
         <dependency>
             <groupId>org.jetbrains.kotlin</groupId>
             <artifactId>kotlin-reflect</artifactId>
-            <version>${kotlin.version}</version>
         </dependency>
         <dependency>
             <groupId>org.jetbrains.kotlin</groupId>
             <artifactId>kotlin-stdlib</artifactId>
-            <version>${kotlin.version}</version>
         </dependency>
         <dependency>
             <groupId>tech.ydb.dialects</groupId>
@@ -76,13 +64,11 @@
         <dependency>
             <groupId>org.jetbrains.kotlinx</groupId>
             <artifactId>kotlinx-coroutines-core</artifactId>
-            <version>1.7.3</version>
         </dependency>
 
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>
-            <version>${spring.boot.version}</version>
             <scope>test</scope>
         </dependency>
         <dependency>
@@ -91,6 +77,19 @@
             <scope>test</scope>
         </dependency>
     </dependencies>
+
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-dependencies</artifactId>
+                <version>${spring.boot.version}</version>
+                <scope>import</scope>
+                <type>pom</type>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+
     <build>
         <sourceDirectory>${project.basedir}/src/main/kotlin</sourceDirectory>
         <testSourceDirectory>${project.basedir}/src/test/kotlin</testSourceDirectory>
