@@ -23,7 +23,7 @@ public class BasicExampleTest {
 
     @Test
     public void testBasicApp() {
-        App app = new App(connectionString());
+        App app = new App(null, connectionString());
         app.run();
         app.close();
     }

@@ -6,6 +6,15 @@ import java.time.LocalDate;
 import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
 
+import io.opentelemetry.api.common.AttributeKey;
+import io.opentelemetry.api.trace.Span;
+import io.opentelemetry.api.trace.Tracer;
+import io.opentelemetry.context.Scope;
+import io.opentelemetry.exporter.otlp.trace.OtlpGrpcSpanExporter;
+import io.opentelemetry.sdk.OpenTelemetrySdk;
+import io.opentelemetry.sdk.resources.Resource;
+import io.opentelemetry.sdk.trace.SdkTracerProvider;
+import io.opentelemetry.sdk.trace.export.BatchSpanProcessor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -33,30 +42,44 @@ public final class App implements Runnable, AutoCloseable {
     private final GrpcTransport transport;
     private final QueryClient queryClient;
     private final SessionRetryContext retryCtx;
+    private final Tracer tracer;
 
-    App(String connectionString) {
+    App(OpenTelemetrySdk sdk, String connectionString) {
         this.transport = GrpcTransport.forConnectionString(connectionString)
                 .withAuthProvider(CloudAuthHelper.getAuthProviderFromEnviron())
+//                .withTracer(tracer == sdk ? null : OpenTelemetryTracer.fromOpenTelemetry(sdk))
+                .addChannelInitializer(new RandomErrorChannel())
                 .build();
         this.queryClient = QueryClient.newClient(transport).build();
-        this.retryCtx = SessionRetryContext.create(queryClient).build();
+        this.retryCtx = SessionRetryContext.create(queryClient).maxRetries(20).build();
+        this.tracer = sdk.getTracer("ydb.example.app");
+    }
+
+    private void traceMethod(String name, Runnable runnable) {
+        Span span = tracer.spanBuilder(name).startSpan();
+        try (@SuppressWarnings({ "try", "unused" }) Scope ignored = span.makeCurrent()) {
+            runnable.run();
+        } finally {
+            span.end();
+        }
     }
 
     @Override
     public void run() {
-        createTables();
-        upsertTablesData();
+        traceMethod("app", () -> {
+            traceMethod("dropTables", this::dropTables);
+            traceMethod("createTables", this::createTables);
+            traceMethod("upsertTablesData", this::upsertTablesData);
 
-        upsertSimple();
+            traceMethod("upsertSimple", this::upsertSimple);
 
-        selectSimple();
-        selectWithParams(1, 2);
-        asyncSelectRead(2, 1);
+            traceMethod("selectSimple", this::selectSimple);
+            traceMethod("selectWithParams", () -> selectWithParams(1, 2));
+            traceMethod("asyncSelectRead", () -> asyncSelectRead(2, 1));
 
-        multiStepTransaction(2, 5);
-        tclTransaction();
-
-        dropTables();
+            traceMethod("multiStepTransaction", () -> multiStepTransaction(2, 5));
+            traceMethod("tclTransaction", this::tclTransaction);
+        });
     }
 
     @Override
@@ -347,6 +370,7 @@ public final class App implements Runnable, AutoCloseable {
                 .join().getValue();
 
             logger.info("get transaction {}", transaction.getId());
+            logger.info("get query stats {}", reader.getQueryInfo().hasStats());
 
             // Commit active transaction (tx)
             return transaction.commit();
@@ -354,21 +378,43 @@ public final class App implements Runnable, AutoCloseable {
     }
 
     private void dropTables() {
-        retryCtx.supplyResult(session -> session.createQuery("DROP TABLE episodes;", TxMode.NONE).execute())
+        retryCtx.supplyResult(session -> session.createQuery("DROP TABLE IF EXISTS episodes;", TxMode.NONE).execute())
                 .join().getStatus().expectSuccess("drop table episodes problem");
-        retryCtx.supplyResult(session -> session.createQuery("DROP TABLE seasons;", TxMode.NONE).execute())
+        retryCtx.supplyResult(session -> session.createQuery("DROP TABLE IF EXISTS seasons;", TxMode.NONE).execute())
                 .join().getStatus().expectSuccess("drop table seasons problem");
-        retryCtx.supplyResult(session -> session.createQuery("DROP TABLE series;", TxMode.NONE).execute())
+        retryCtx.supplyResult(session -> session.createQuery("DROP TABLE IF EXISTS series;", TxMode.NONE).execute())
                 .join().getStatus().expectSuccess("drop table series problem");
     }
 
     public static void main(String[] args) throws IOException {
-        if (args.length != 1) {
+        if (args.length != 1 && args.length != 2) {
             System.err.println("Usage: java -jar ydb-basic-example.jar <connection-string>");
             return;
         }
 
-        try (App app = new App(args[0])) {
+        OpenTelemetrySdk sdk = null;
+        if (args.length > 1) {
+            Resource appData = Resource.getDefault().toBuilder()
+                    .put(AttributeKey.stringKey("service.name"), "ydb-example-app")
+                    .build();
+
+            OtlpGrpcSpanExporter spanExporter = OtlpGrpcSpanExporter.builder()
+                    .setEndpoint(args[1])
+                    .build();
+
+            SdkTracerProvider tracerProvider = SdkTracerProvider.builder()
+                    .setResource(appData)
+                    .addSpanProcessor(BatchSpanProcessor.builder(spanExporter).build())
+                    .build();
+
+            sdk = OpenTelemetrySdk.builder()
+                    .setTracerProvider(tracerProvider)
+                    .build();
+
+            Runtime.getRuntime().addShutdownHook(new Thread(tracerProvider::close));
+        }
+
+        try (App app = new App(sdk, args[0])) {
             app.run();
         } catch (Exception e) {
             logger.error("app problem", e);
