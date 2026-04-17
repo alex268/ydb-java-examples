@@ -22,6 +22,7 @@ import tech.ydb.auth.iam.CloudAuthHelper;
 import tech.ydb.common.transaction.TxMode;
 import tech.ydb.core.Status;
 import tech.ydb.core.grpc.GrpcTransport;
+import tech.ydb.core.tracing.OpenTelemetryTracer;
 import tech.ydb.query.QueryClient;
 import tech.ydb.query.QueryStream;
 import tech.ydb.query.QueryTransaction;
@@ -47,12 +48,12 @@ public final class App implements Runnable, AutoCloseable {
     App(OpenTelemetrySdk sdk, String connectionString) {
         this.transport = GrpcTransport.forConnectionString(connectionString)
                 .withAuthProvider(CloudAuthHelper.getAuthProviderFromEnviron())
-//                .withTracer(tracer == sdk ? null : OpenTelemetryTracer.fromOpenTelemetry(sdk))
+                .withTracer(sdk == null ? null : OpenTelemetryTracer.fromOpenTelemetry(sdk))
                 .addChannelInitializer(new RandomErrorChannel())
                 .build();
         this.queryClient = QueryClient.newClient(transport).build();
         this.retryCtx = SessionRetryContext.create(queryClient).maxRetries(20).build();
-        this.tracer = sdk.getTracer("ydb.example.app");
+        this.tracer = sdk == null ? null : sdk.getTracer("ydb.example.app");
     }
 
     private void traceMethod(String name, Runnable runnable) {
